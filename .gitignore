@@ -1,5 +1,8 @@
-nturgb+d_skeletons/
+data/
 .venv/
+models/
 
 nturgbd_skeletons_s001_to_s017.zip
 .env
+helper.txt
+rough.py
