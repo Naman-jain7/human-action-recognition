@@ -1,6 +1,5 @@
 data/
 .venv/
-prompts/
 models/
 __pycache__/
 

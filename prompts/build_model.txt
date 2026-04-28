@@ -1,0 +1,36 @@
+now write full script for CTR-GCN model
+MODEL_PATH = "/content/drive/MyDrive/Deep Learning Project/models/ntu60_hrnet.pkl"
+output_dir=os.path.dirname(MODEL_PATH)
+saved_model_path = os.path.join(output_dir, 'ctr_gcn_checkpoint.pth')
+
+use stronger augmentations(temporal masking, scaling)
+inside the training loop:
+    track train_loss_history, train_acc_history, val_loss_history, val_acc_history for plotting
+    load full checkpoint if exists(model_state_dict, optimizer_state_dict, scheduler_state_dict, epoch, best_val_acc) and resume training from there
+    use proper checkpointing in the model training if val acc increases.save both checkpoint and best model in saved_model_path
+    also implement early stopping
+
+evaluate on test data(xview_val) and print results
+print classification report
+plot confusion matrix, training curves
+
+
+
+
+
+proceed with the plan. make sure normalization + multi-stream are also handled correctly.
+ 
+dont change:
+MODEL_PATH = "/content/drive/MyDrive/Deep Learning Project/models/ntu60_hrnet.pkl"
+output_dir=os.path.dirname(MODEL_PATH)
+saved_model_path = os.path.join(output_dir, 'ctr_gcn_checkpoint.pth')
+
+save both checkpoint and best model in saved_model_path
+evaluate on test data(xview_val) and print results
+
+also define the variables at the top
+LR=
+EPOCHS=
+NUM_WORKERS=
+NUM_CLASSES=
+BATCH_SIZE=
