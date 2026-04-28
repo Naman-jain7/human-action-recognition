@@ -1,9 +1,11 @@
-torch
-torchvision
-numpy
-opencv-python
-mediapipe
+torch==2.11.0
+torchvision==0.26.0
+numpy==2.4.4
+opencv-python==4.13.0.92
+mediapipe==0.10.9
 tqdm
-scikit-learn
+scikit-learn==1.8.0
 matplotlib
 seaborn
+python-dotenv==1.2.2
+huggingface_hub==1.9.0

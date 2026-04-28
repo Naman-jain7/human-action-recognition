@@ -97,22 +97,8 @@ MP_TO_COCO = {
 }
 
 BONE_PAIRS = [
-    (0, 1),
-    (0, 2),
-    (1, 3),
-    (2, 4),
-    (5, 7),
-    (7, 9),
-    (6, 8),
-    (8, 10),
-    (5, 6),
-    (5, 11),
-    (6, 12),
-    (11, 12),
-    (11, 13),
-    (13, 15),
-    (12, 14),
-    (14, 16),
+    (0, 1), (0, 2), (1, 3), (2, 4), (5, 7), (7, 9), (6, 8), (8, 10),
+    (5, 6), (5, 11), (6, 12), (11, 12), (11, 13), (13, 15), (12, 14), (14, 16)
 ]
 
 
@@ -230,47 +216,57 @@ def preprocess_sequence(frames_buffer, max_frames=64):
         indices = np.linspace(0, T - 1, max_frames).astype(int)
         kp = kp[:, indices, :, :]
 
-    # Centralize relative to center of body (joint 0 - nose as proxy)
-    center = kp[0, 0, 0, :2].copy()
-    kp[:, :, :, :2] -= center
-    
-    # Checkpoint was trained with 2 channels (x, y), so we drop confidence
-    kp = kp[:, :, :, :2]
+    # Joint Stream Preprocessing
+    kp_j = kp.copy()
+    center = kp_j[0, 0, 0, :2].copy()
+    kp_j[:, :, :, :2] -= center
+    kp_j = kp_j[:, :, :, :2]  # Drop confidence
 
-    # Transpose to (N, C, T, V, M) format for CTR-GCN
+    # Bone Stream Preprocessing
     M, T, V, C = kp.shape
-    features = np.transpose(kp, (0, 3, 1, 2))  # (N, C, T, V)
-    features = np.expand_dims(features, axis=-1)  # (N, C, T, V, M) -> (1, 2, 64, 17, 1)
+    kp_b = np.zeros_like(kp)
+    for v1, v2 in BONE_PAIRS:
+        if v1 < V and v2 < V:
+            kp_b[:, :, v1, :2] = kp[:, :, v1, :2] - kp[:, :, v2, :2]
+    kp_b = kp_b[:, :, :, :2]  # Drop confidence
 
-    # Model expects M=2 (for 2 person NTU format), so we pad with zeros for the 2nd person
-    pad = np.zeros((1, C, T, V, 1))
-    features = np.concatenate([features, pad], axis=-1)  # (1, 2, 64, 17, 2)
-    return torch.tensor(features, dtype=torch.float32)
+    def to_tensor(data):
+        M, T, V, C = data.shape
+        feat = np.transpose(data, (0, 3, 1, 2))  # (N, C, T, V)
+        feat = np.expand_dims(feat, axis=-1)  # (N, C, T, V, 1)
+        pad = np.zeros((1, C, T, V, 1))
+        feat = np.concatenate([feat, pad], axis=-1)  # (1, C, T, V, 2)
+        return torch.tensor(feat, dtype=torch.float32)
+
+    return to_tensor(kp_j), to_tensor(kp_b)
 
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Using 2 channels as per the checkpoint size mismatch (34/17 = 2)
-    model = CTR_GCN_Network(in_channels=2, num_classes=60).to(device)
+    
+    # Initialize Joint and Bone models
+    model_j = CTR_GCN_Network(in_channels=2, num_classes=60).to(device)
+    model_b = CTR_GCN_Network(in_channels=2, num_classes=60).to(device)
 
-    # Try to load weights if available
-    checkpoint_path = "models/best_ctr_gcn_joints.pth"
-    if os.path.exists(checkpoint_path):
-        try:
-            # We use weights_only=False due to how PyTorch 2.6 defaults handle unzipped states
-            model.load_state_dict(
-                torch.load(checkpoint_path, map_location=device, weights_only=False),
-                strict=False
-            )
-            print(f"Weights loaded successfully from {checkpoint_path}.")
-        except Exception as e:
-            print(f"Could not load weights: {e}. Running with initialized weights.")
-    else:
-        print(
-            f"Checkpoint {checkpoint_path} not found. Running with uninitialized weights."
-        )
+    # Load weights
+    checkpoint_j = "models/best_ctr_gcn_joints.pth"
+    checkpoint_b = "models/best_ctr_gcn_bones.pth"
 
-    model.eval()
+    for model, path, name in [(model_j, checkpoint_j, "Joint"), (model_b, checkpoint_b, "Bone")]:
+        if os.path.exists(path):
+            try:
+                model.load_state_dict(
+                    torch.load(path, map_location=device, weights_only=False),
+                    strict=False
+                )
+                print(f"{name} weights loaded successfully from {path}.")
+            except Exception as e:
+                print(f"Could not load {name} weights: {e}. Running with initialized weights.")
+        else:
+            print(f"Checkpoint {path} not found. Running {name} with uninitialized weights.")
+
+    model_j.eval()
+    model_b.eval()
 
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -315,10 +311,18 @@ def main():
 
             # Perform inference when buffer is full
             if len(buffer) == MAX_FRAMES:
-                input_tensor = preprocess_sequence(buffer, MAX_FRAMES).to(device)
+                joint_input, bone_input = preprocess_sequence(buffer, MAX_FRAMES)
+                joint_input = joint_input.to(device)
+                bone_input = bone_input.to(device)
+
                 with torch.no_grad():
-                    output = model(input_tensor)
-                    pred_idx = torch.argmax(output, dim=1).item()
+                    out_j = model_j(joint_input)
+                    out_b = model_b(bone_input)
+                    
+                    # Ensemble: average the logits (you could also use weighted sum)
+                    out = (out_j + out_b) / 2.0
+                    
+                    pred_idx = torch.argmax(out, dim=1).item()
                     action_label = NTU_CLASSES[pred_idx]
 
         # Display the result
