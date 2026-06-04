@@ -4,6 +4,7 @@ models/
 __pycache__/
 .agents/
 .ruff_cache/
+personal/
 
 human-action-recognition/
 
