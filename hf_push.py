@@ -12,4 +12,4 @@ HF_FOLDER_PATH = os.getenv("HF_FOLDER_PATH")
 HF_REPO_ID = os.getenv("HF_REPO_ID")
 
 # Push your model files
-upload_folder(folder_path=HF_FOLDER_PATH, repo_id=HF_REPO_ID, repo_type="model")
+upload_folder(folder_path=HF_FOLDER_PATH, repo_id=HF_REPO_ID, repo_type="model") # type: ignore
