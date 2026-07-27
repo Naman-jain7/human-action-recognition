@@ -1,9 +1,10 @@
 import os
+
 import cv2
 import mediapipe as mp
-import torch
-import torch.nn as nn
 import numpy as np
+import torch
+from torch import nn
 
 # --- NTU-60 Classes ---
 NTU_CLASSES = [
@@ -133,7 +134,7 @@ class AdaptiveGCNBlock(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x, A):
-        N, C, T, V = x.size()
+        N, _C, T, V = x.size()
         A_adaptive = A + self.PA
         x = self.conv(x)
         x = x.view(N, -1, A.size(0), T, V)
@@ -223,7 +224,7 @@ def preprocess_sequence(frames_buffer, max_frames=64):
     kp_j = kp_j[:, :, :, :2]  # Drop confidence
 
     # Bone Stream Preprocessing
-    M, T, V, C = kp.shape
+    _M, T, V, _C = kp.shape
     kp_b = np.zeros_like(kp)
     for v1, v2 in BONE_PAIRS:
         if v1 < V and v2 < V:
@@ -231,7 +232,7 @@ def preprocess_sequence(frames_buffer, max_frames=64):
     kp_b = kp_b[:, :, :, :2]  # Drop confidence
 
     def to_tensor(data):
-        M, T, V, C = data.shape
+        M, T, V, C = data.shape  # noqa: RUF059
         feat = np.transpose(data, (0, 3, 1, 2))  # (N, C, T, V)
         feat = np.expand_dims(feat, axis=-1)  # (N, C, T, V, 1)
         pad = np.zeros((1, C, T, V, 1))
@@ -243,7 +244,12 @@ def preprocess_sequence(frames_buffer, max_frames=64):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+    print("Torch CUDA available:", torch.cuda.is_available())
+    print("Selected device:", device)
+    if torch.cuda.is_available():
+        print("GPU:", torch.cuda.get_device_name(0))
+        
+        
     # Initialize Joint and Bone models
     model_j = CTR_GCN_Network(in_channels=2, num_classes=60).to(device)
     model_b = CTR_GCN_Network(in_channels=2, num_classes=60).to(device)
@@ -260,7 +266,7 @@ def main():
                     strict=False
                 )
                 print(f"{name} weights loaded successfully from {path}.")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"Could not load {name} weights: {e}. Running with initialized weights.")
         else:
             print(f"Checkpoint {path} not found. Running {name} with uninitialized weights.")
